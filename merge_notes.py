@@ -288,17 +288,18 @@ class _PdfLayout:
         est = _estimate_transcript_height(spoken, self.content_w)
         if est <= 0:
             return 0.0
-        overhead = 22 + 3 + 3
-        max_for_text = slot_h - overhead - self.MIN_IMG_H
-        return min(est, max(max_for_text, 28))
+        overhead = 22 + 3 + 3 + 12  # title, gaps, "Transcript" label
+        return min(est, max(slot_h - overhead - self.MIN_IMG_H, 24))
 
     def place_slide(self, slide: SlideNote, slot_y: float, slot_h: float) -> None:
         assert self.page is not None
         title_size = 11
         title_h = 22
         gap = 3
+        label_h = 12 if slide.spoken.strip() else 0
         transcript_h = self._transcript_block_height(slide.spoken, slot_h)
-        img_max_h = slot_h - title_h - gap - transcript_h - gap
+        img_max_h = slot_h - title_h - gap - label_h - transcript_h - gap
+        img_max_h = max(img_max_h, 40)
 
         title = f"{slide.index}. {slide.title}"
         title_rect = fitz.Rect(
@@ -309,34 +310,35 @@ class _PdfLayout:
         )
 
         img_y = slot_y + title_h + gap
-        disp_w, disp_h = _image_fit_size(
-            slide.thumb, self.content_w, max(img_max_h, 60)
-        )
+        disp_w, disp_h = _image_fit_size(slide.thumb, self.content_w, img_max_h)
         x = self.margin + (self.content_w - disp_w) / 2
         img_rect = fitz.Rect(x, img_y, x + disp_w, img_y + disp_h)
         self.page.insert_image(img_rect, filename=str(slide.thumb))
 
         if slide.spoken.strip():
             ty = img_y + disp_h + 4
-            muted = (0.42, 0.42, 0.42)
-            self.page.insert_text(
-                (self.margin, ty + 8),
-                "Transcript",
-                fontsize=7.5,
-                fontname="hebo",
-                color=muted,
-            )
-            tr_rect = fitz.Rect(
-                self.margin, ty + 11, self.margin + self.content_w, slot_y + slot_h - 1
-            )
-            self.page.insert_textbox(
-                tr_rect,
-                slide.spoken,
-                fontsize=8,
-                fontname="heit",
-                align=0,
-                color=(0.28, 0.28, 0.28),
-            )
+            tr_top = ty + label_h
+            tr_bottom = slot_y + slot_h - 2
+            if tr_bottom > tr_top + 8:
+                muted = (0.42, 0.42, 0.42)
+                self.page.insert_text(
+                    (self.margin, ty + 8),
+                    "Transcript",
+                    fontsize=7.5,
+                    fontname="hebo",
+                    color=muted,
+                )
+                tr_rect = fitz.Rect(
+                    self.margin, tr_top, self.margin + self.content_w, tr_bottom
+                )
+                self.page.insert_textbox(
+                    tr_rect,
+                    slide.spoken,
+                    fontsize=8,
+                    fontname="heit",
+                    align=0,
+                    color=(0.28, 0.28, 0.28),
+                )
 
     def slides_page(self, top: SlideNote, bottom: SlideNote | None = None) -> None:
         self.new_page()
