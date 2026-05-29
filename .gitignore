@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+output/images/*
+!output/images/.gitkeep
 output/notes/*
 !output/notes/.gitkeep
-output/notes/images/
