@@ -28,6 +28,19 @@ SLIDE_TITLES = [
     "Innovation begins at adoption",
 ]
 
+TRANSCRIPT_BY_SLIDE = [
+    "Hello and welcome back to this new presentation. Today we're gonna look through very important topics that are necessary to complete our mission. So first thing to begin is let me just take a moment. So we are gonna walk through the value of innovation for investors and then today's focus is going to be asset and equity story.",
+    "So how to prepare an elevator pitch. Let me give you a few remarks here. It's very important that you are confident.",
+    "To see what's important to the people that actually invest in you, you need to really carefully study them.",
+    "Another important thing is alpha and beta generation. You have any ideas what that means? So alpha is the one that performs the best on the market. And beta is the most stable one.",
+    "And what is high growth and high risk? So high growth is the one that you can invest in and it has a lot of potential to grow. High risk is the one that doesn't.",
+    "So for investors it's all about monetization. Buyback is to buy back. IPO is to make liquidity. Acquisition deal is that somebody buys from you. License deal is that you are basically selling to the person.",
+    "Think strategically.",
+    "And here is the comparison of asset story. So what's being developed? How defensible and differentiated it is — it's all really important. And also the equity story. You need to know what exactly you have to offer in order for investors to really believe in you.",
+    "And here also many stakeholders. I would recommend that you check all of these things — the slide tells you what all of this means.",
+    "Innovation begins at adoption. That's the end of today's lecture. Thank you for being here.",
+]
+
 COVER = {
     "title": "Nucleate Villiger",
     "subtitle": "Asset + Equity Story",
@@ -52,6 +65,7 @@ class SlideNote:
     index: int
     title: str
     thumb: Path
+    spoken: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -140,7 +154,8 @@ def collect_slides(paths: Paths) -> list[SlideNote]:
         lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
         title = SLIDE_TITLES[i] if i < len(SLIDE_TITLES) else slide_title(lines)
         thumb = extract_thumb(i, page, paths.img_dir, paths.img_prefix)
-        slides.append(SlideNote(index=i + 1, title=title, thumb=thumb))
+        spoken = TRANSCRIPT_BY_SLIDE[i] if i < len(TRANSCRIPT_BY_SLIDE) else ""
+        slides.append(SlideNote(index=i + 1, title=title, thumb=thumb, spoken=spoken))
 
     doc.close()
     return slides
@@ -249,12 +264,18 @@ class _PdfLayout:
         usable = self.page_h - 2 * self.margin - self.SLOT_GAP
         return usable / self.SLIDES_PER_PAGE
 
+    def _transcript_block_height(self, spoken: str) -> float:
+        if not spoken.strip():
+            return 0.0
+        return 50.0
+
     def place_slide(self, slide: SlideNote, slot_y: float, slot_h: float) -> None:
         assert self.page is not None
         title_size = 11
-        title_h = 26
-        gap = 4
-        img_max_h = slot_h - title_h - gap
+        title_h = 22
+        gap = 3
+        transcript_h = self._transcript_block_height(slide.spoken)
+        img_max_h = slot_h - title_h - gap - transcript_h - gap
 
         title = f"{slide.index}. {slide.title}"
         title_rect = fitz.Rect(
@@ -265,10 +286,32 @@ class _PdfLayout:
         )
 
         img_y = slot_y + title_h + gap
-        disp_w, disp_h = _image_fit_size(slide.thumb, self.content_w, img_max_h)
+        disp_w, disp_h = _image_fit_size(slide.thumb, self.content_w, max(img_max_h, 80))
         x = self.margin + (self.content_w - disp_w) / 2
         img_rect = fitz.Rect(x, img_y, x + disp_w, img_y + disp_h)
         self.page.insert_image(img_rect, filename=str(slide.thumb))
+
+        if slide.spoken.strip():
+            ty = img_y + disp_h + 4
+            muted = (0.42, 0.42, 0.42)
+            self.page.insert_text(
+                (self.margin, ty + 8),
+                "Transcript",
+                fontsize=7.5,
+                fontname="hebo",
+                color=muted,
+            )
+            tr_rect = fitz.Rect(
+                self.margin, ty + 11, self.margin + self.content_w, slot_y + slot_h - 1
+            )
+            self.page.insert_textbox(
+                tr_rect,
+                slide.spoken,
+                fontsize=8,
+                fontname="heit",
+                align=0,
+                color=(0.28, 0.28, 0.28),
+            )
 
     def slides_page(self, top: SlideNote, bottom: SlideNote | None = None) -> None:
         self.new_page()

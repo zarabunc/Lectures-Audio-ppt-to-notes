@@ -7,6 +7,7 @@ Merge lecture slide PDFs into printable **notes PDFs**.
 - High-quality slide thumbnails embedded in PDF
 - Styled cover page (centered title, gold accent)
 - **2 slides per page** with title directly above each slide
+- **Per-slide transcript** excerpt under each slide image
 - Slide images cached in one shared folder: `output/images/`
 
 ## Setup
@@ -20,7 +21,7 @@ cd Lectures-Audio-ppt-to-notes
 ## Usage
 
 1. Put your slides PDF in `input/slides/`
-2. Edit `SLIDE_TITLES` and `COVER` in `merge_notes.py` for your lecture (optional)
+2. Edit `SLIDE_TITLES`, `TRANSCRIPT_BY_SLIDE`, and `COVER` in `merge_notes.py` for your lecture (optional)
 3. Run:
 
 ```bash
