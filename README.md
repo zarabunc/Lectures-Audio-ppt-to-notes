@@ -6,7 +6,7 @@ Merge lecture slide PDFs into printable **notes PDFs**.
 
 - High-quality slide thumbnails embedded in PDF
 - Styled cover page (centered title, gold accent)
-- **2 slides per page** with title directly above each slide
+- **2 slides per page** when transcript text is short enough; otherwise **1 slide per page**
 - **Per-slide transcript** excerpt under each slide image
 - Slide images cached in one shared folder: `output/images/`
 

@@ -167,6 +167,18 @@ def _image_fit_size(path: Path, max_w: float, max_h: float) -> tuple[float, floa
     return pix.width * scale, pix.height * scale
 
 
+def _estimate_transcript_height(spoken: str, content_w: float, fontsize: float = 8) -> float:
+    if not spoken.strip():
+        return 0.0
+    chars_per_line = max(24, int(content_w / (fontsize * 0.52)))
+    lines = max(1, (len(spoken) + chars_per_line - 1) // chars_per_line)
+    return 12 + lines * (fontsize + 2) + 2
+
+
+def _slide_min_height(spoken: str, content_w: float, min_img_h: float = 90) -> float:
+    return 22 + 3 + min_img_h + 3 + _estimate_transcript_height(spoken, content_w)
+
+
 def _is_blank_page(page: fitz.Page) -> bool:
     return not page.get_text().strip() and not page.get_images() and not page.get_drawings()
 
@@ -180,6 +192,8 @@ class _PdfLayout:
     GAP = 8
     SLOT_GAP = 10
     SLIDES_PER_PAGE = 2
+
+    MIN_IMG_H = 90
 
     def __init__(self, doc: fitz.Document) -> None:
         self.doc = doc
@@ -260,21 +274,30 @@ class _PdfLayout:
 
         self.y = self.bottom
 
-    def _slot_height(self) -> float:
-        usable = self.page_h - 2 * self.margin - self.SLOT_GAP
-        return usable / self.SLIDES_PER_PAGE
+    def _usable_height(self) -> float:
+        return self.page_h - 2 * self.margin
 
-    def _transcript_block_height(self, spoken: str) -> float:
-        if not spoken.strip():
+    def _half_slot_height(self) -> float:
+        return (self._usable_height() - self.SLOT_GAP) / self.SLIDES_PER_PAGE
+
+    def fits_half_slot(self, slide: SlideNote) -> bool:
+        need = _slide_min_height(slide.spoken, self.content_w, self.MIN_IMG_H)
+        return need <= self._half_slot_height() + 2
+
+    def _transcript_block_height(self, spoken: str, slot_h: float) -> float:
+        est = _estimate_transcript_height(spoken, self.content_w)
+        if est <= 0:
             return 0.0
-        return 50.0
+        overhead = 22 + 3 + 3
+        max_for_text = slot_h - overhead - self.MIN_IMG_H
+        return min(est, max(max_for_text, 28))
 
     def place_slide(self, slide: SlideNote, slot_y: float, slot_h: float) -> None:
         assert self.page is not None
         title_size = 11
         title_h = 22
         gap = 3
-        transcript_h = self._transcript_block_height(slide.spoken)
+        transcript_h = self._transcript_block_height(slide.spoken, slot_h)
         img_max_h = slot_h - title_h - gap - transcript_h - gap
 
         title = f"{slide.index}. {slide.title}"
@@ -286,7 +309,9 @@ class _PdfLayout:
         )
 
         img_y = slot_y + title_h + gap
-        disp_w, disp_h = _image_fit_size(slide.thumb, self.content_w, max(img_max_h, 80))
+        disp_w, disp_h = _image_fit_size(
+            slide.thumb, self.content_w, max(img_max_h, 60)
+        )
         x = self.margin + (self.content_w - disp_w) / 2
         img_rect = fitz.Rect(x, img_y, x + disp_w, img_y + disp_h)
         self.page.insert_image(img_rect, filename=str(slide.thumb))
@@ -315,11 +340,29 @@ class _PdfLayout:
 
     def slides_page(self, top: SlideNote, bottom: SlideNote | None = None) -> None:
         self.new_page()
-        slot_h = self._slot_height()
+        if bottom is None:
+            self.place_slide(top, self.margin, self._usable_height())
+            return
+
+        slot_h = self._half_slot_height()
         self.place_slide(top, self.margin, slot_h)
-        if bottom is not None:
-            slot_y = self.margin + slot_h + self.SLOT_GAP
-            self.place_slide(bottom, slot_y, slot_h)
+        slot_y = self.margin + slot_h + self.SLOT_GAP
+        self.place_slide(bottom, slot_y, slot_h)
+
+
+def _layout_slides(layout: _PdfLayout, slides: list[SlideNote]) -> None:
+    i = 0
+    while i < len(slides):
+        if (
+            i + 1 < len(slides)
+            and layout.fits_half_slot(slides[i])
+            and layout.fits_half_slot(slides[i + 1])
+        ):
+            layout.slides_page(slides[i], slides[i + 1])
+            i += 2
+        else:
+            layout.slides_page(slides[i])
+            i += 1
 
 
 def build_pdf(slides: list[SlideNote], paths: Paths) -> None:
@@ -332,10 +375,7 @@ def build_pdf(slides: list[SlideNote], paths: Paths) -> None:
         meta_lines=COVER["meta_lines"],
     )
 
-    for i in range(0, len(slides), 2):
-        top = slides[i]
-        bottom = slides[i + 1] if i + 1 < len(slides) else None
-        layout.slides_page(top, bottom)
+    _layout_slides(layout, slides)
 
     _trim_leading_blank_pages(doc)
     doc.save(str(paths.out_pdf), deflate=True, garbage=4)
