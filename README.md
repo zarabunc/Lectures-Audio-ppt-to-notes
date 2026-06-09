@@ -1,41 +1,112 @@
-# Lectures-Audio-ppt-to-notes
+# Lecture Enricher
 
-Merge lecture slide PDFs into printable **notes PDFs**.
+Orodje za generiranje zapiskov iz predavanj: vzame PDF slajdov in posnetek predavanja, s pomočjo Whisperja naredi transkript, Claude API pa semantično poveže dele transkripta s posameznimi slajdi.
 
-## Features
+**Izhod:**
 
-- High-quality slide thumbnails embedded in PDF
-- Styled cover page (centered title, gold accent)
-- **2 slides per page** when transcript text is short enough; otherwise **1 slide per page**
-- **Per-slide transcript** excerpt under each slide image
-- Slide images cached in one shared folder: `output/images/`
+| Mapa | Vsebina |
+|------|---------|
+| `output/transcripts/` | Celoten transkript predavanja (Whisper) |
+| `output/notes/` | Zapiski PDF — slajdi + ujemajoči del transkripta |
+| `output/images/` | Slike slajdov |
 
-## Setup
+---
+
+## Namestitev
 
 ```bash
 git clone https://github.com/zarabunc/Lectures-Audio-ppt-to-notes.git
-cd Lectures-Audio-ppt-to-notes
-./setup.sh
+cd Lectures-Audio-ppt-to-notes/app
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Usage
+Potrebuješ tudi:
+- **Anthropic API ključ** — dobi ga na [console.anthropic.com](https://console.anthropic.com)
+- **ffmpeg** (za Whisper): `brew install ffmpeg`
 
-1. Put your slides PDF in `input/slides/`
-2. Edit `SLIDE_TITLES`, `TRANSCRIPT_BY_SLIDE`, and `COVER` in `merge_notes.py` for your lecture (optional)
-3. Run:
+---
+
+## Hiter zagon — samo zapiski iz slajdov
+
+Če imaš že PDF slajdov in transkript, poženi samo `merge_notes.py`:
 
 ```bash
-.venv/bin/python3 merge_notes.py \
-  --slides "input/slides/your-deck.pdf" \
-  --name "my_lecture_notes"
+cd app
+source .venv/bin/activate
+
+# API ključ kot argument
+python merge_notes.py --api-key sk-ant-...
+
+# ali kot okoljska spremenljivka
+export ANTHROPIC_API_KEY=sk-ant-...
+python merge_notes.py
 ```
 
-Output:
+Skript te bo za API ključ vprašal tudi interaktivno, če ga ne podaš.
 
-- `output/notes/my_lecture_notes.pdf`
-- Slide JPEGs (reused across runs): `output/images/my-lecture-notes-slide-01-thumb.jpg`, …
+### Možnosti
 
-## Requirements
+| Argument | Opis | Privzeto |
+|----------|------|---------|
+| `--api-key` | Anthropic API ključ | `ANTHROPIC_API_KEY` env |
+| `--slides` | Pot do PDF slajdov | `input/slides/*.pdf` |
+| `--transcript` | Pot do `.txt` datoteke s transkriptom | vsebina `FULL_TRANSCRIPT` v skriptu |
+| `--name` | Ime izhodnega PDF | `Lecture test_notes` |
 
-- Python 3.10+
-- [PyMuPDF](https://pypi.org/project/PyMuPDF/)
+**Primer z vsemi argumenti:**
+
+```bash
+python merge_notes.py \
+  --api-key sk-ant-... \
+  --slides ../input/slides/predavanje.pdf \
+  --transcript ../input/transcript.txt \
+  --name "Predavanje 1_notes"
+```
+
+Izhod: `output/notes/Predavanje 1_notes.pdf`
+
+### Transkript
+
+Transkript podat kot **eno samo besedilo** (ni treba razdeliti po slajdih). Claude sam ugotovi, kateri del transkripta spada k kateremu slajdu glede na vsebino.
+
+Primer `transcript.txt`:
+```
+Danes si bomo ogledali vrednost inovacij za investitorje...
+Elevator pitch je kratek povzetek vašega projekta...
+...
+```
+
+---
+
+## Celoten pipeline (posnetek → zapiski)
+
+```bash
+cd ..   # koren repozitorija
+./run.sh --course "Ime predavanja"
+```
+
+Če je zvok že v `input/audio/`:
+
+```bash
+./run.sh --course "Ime predavanja" --skip-export
+```
+
+### Možnosti `run.sh`
+
+| Ukaz | Pomen |
+|------|--------|
+| `--course "..."` | Ime predavanja |
+| `--skip-export` | Preskoči izvoz iz Voice Memos |
+| `--whisper-model small` | Natančnejši Whisper (počasneje) |
+| `--all` | Obdelaj vse seje brez izbire |
+
+---
+
+## Kako deluje
+
+1. **Whisper** pretvori posnetek predavanja v besedilo
+2. **Claude vision** za vsak slajd: prebere besedilo (OCR) + pogleda sliko → naredi povzetek vsebine slajda
+3. **Claude** primerja celoten transkript z vsebinami slajdov → semantično priredi dele transkripta k ustreznim slajdom
+4. **PyMuPDF** sestavi končni PDF z zapiski (naslovnica + slajdi s transkripcijo)
